@@ -10,6 +10,10 @@ GU_Panorama.Account = {
     remember = false
 }
 
+local function logDebug(message)
+    print("[GU_Panorama] " .. tostring(message or ""))
+end
+
 -- placeholders are defined up front so early input callbacks always have callable targets
 local showCharacters = function() end
 local showAuth = function() end
@@ -67,6 +71,7 @@ local function makeBackground()
         hook.Remove("PlayerButtonDown", "GU_Panorama_AnyKey")
 
         GU_Panorama.State = "auth"
+        logDebug("Панорама закрыта, открываем следующий шаг")
 
         if GU_Panorama.AutoLogin then
             showCharacters()
@@ -152,7 +157,7 @@ local function requestSelectChar(slot, useLastPos)
     net.SendToServer()
 end
 
-local function buildLoginForm(parent)
+local function buildLoginForm(parent, setStatus)
     local container = vgui.Create("DPanel", parent)
     container:Dock(FILL)
     container:DockMargin(24, 24, 24, 24)
@@ -184,13 +189,16 @@ local function buildLoginForm(parent)
     form:AddItem(submit)
 
     submit.DoClick = function()
+        if setStatus then setStatus("Отправляем запрос на вход...", Color(120, 200, 255)) end
+        logDebug("Запрос входа отправлен")
         requestLogin(loginEntry:GetText(), passwordEntry:GetText(), remember:GetChecked())
+        GU_Panorama.LastAction = "login"
     end
 
     return container
 end
 
-local function buildRegisterForm(parent)
+local function buildRegisterForm(parent, setStatus)
     local container = vgui.Create("DPanel", parent)
     container:Dock(FILL)
     container:DockMargin(24, 24, 24, 24)
@@ -226,7 +234,10 @@ local function buildRegisterForm(parent)
     form:AddItem(submit)
 
     submit.DoClick = function()
+        if setStatus then setStatus("Отправляем запрос на регистрацию...", Color(120, 200, 255)) end
+        logDebug("Запрос регистрации отправлен")
         requestRegister(loginEntry:GetText(), emailEntry:GetText(), passwordEntry:GetText(), promoEntry:GetText(), remember:GetChecked())
+        GU_Panorama.LastAction = "register"
     end
 
     return container
@@ -455,11 +466,29 @@ local function buildAuth()
     frame:SetTitle("Вход / Регистрация")
     frame:MakePopup()
 
+    local status = vgui.Create("DLabel", frame)
+    status:Dock(BOTTOM)
+    status:DockMargin(16, 4, 16, 12)
+    status:SetWrap(true)
+    status:SetAutoStretchVertical(true)
+    status:SetTextColor(color_white)
+    status:SetFont("GU_Panorama_Small")
+    status:SetText("Ожидание действия...")
+
+    local function setStatus(msg, col)
+        if not IsValid(status) then return end
+        status:SetText(msg or "")
+        status:SetTextColor(col or color_white)
+        status:InvalidateLayout(true)
+    end
+
+    GU_Panorama.SetStatus = setStatus
+
     local sheet = vgui.Create("DPropertySheet", frame)
     sheet:Dock(FILL)
 
-    sheet:AddSheet("Авторизация", buildLoginForm(sheet), "icon16/user.png")
-    sheet:AddSheet("Регистрация", buildRegisterForm(sheet), "icon16/add.png")
+    sheet:AddSheet("Авторизация", buildLoginForm(sheet, setStatus), "icon16/user.png")
+    sheet:AddSheet("Регистрация", buildRegisterForm(sheet, setStatus), "icon16/add.png")
 
     return frame
 end
@@ -468,16 +497,20 @@ local function closeAll()
     if IsValid(GU_Panorama.Panorama) then GU_Panorama.Panorama:Remove() end
     if IsValid(GU_Panorama.AuthFrame) then GU_Panorama.AuthFrame:Remove() end
     if IsValid(GU_Panorama.CharacterFrame) then GU_Panorama.CharacterFrame:Remove() end
+    GU_Panorama.SetStatus = nil
 end
 
 showCharacters = function()
     if IsValid(GU_Panorama.AuthFrame) then GU_Panorama.AuthFrame:Close() end
+    GU_Panorama.SetStatus = nil
     GU_Panorama.CharacterFrame = buildCharacterSlots()
+    logDebug("Открыто меню выбора персонажа")
 end
 
 showAuth = function()
     if IsValid(GU_Panorama.CharacterFrame) then GU_Panorama.CharacterFrame:Close() end
     GU_Panorama.AuthFrame = buildAuth()
+    logDebug("Открыто окно авторизации/регистрации")
 end
 
 local function showPanorama()
@@ -508,6 +541,7 @@ local function showPanorama()
 end
 
 net.Receive("gu_panorama_sync", function()
+    local lastAction = GU_Panorama.LastAction
     GU_Panorama.Characters = {}
     GU_Panorama.Account = {
         remember = net.ReadBool(),
@@ -541,6 +575,23 @@ net.Receive("gu_panorama_sync", function()
         end
 
         table.insert(GU_Panorama.Characters, char)
+    end
+
+    logDebug(string.format("Получен sync: аккаунт '%s', персонажей %d", GU_Panorama.Account.login or "", #GU_Panorama.Characters))
+
+    if GU_Panorama.SetStatus then
+        if lastAction == "login" then
+            if GU_Panorama.Account.login == "" then
+                GU_Panorama.SetStatus("Неверный логин или пароль", Color(255, 120, 120))
+                logDebug("Логин не подтверждён: пустой логин из ответа")
+            else
+                GU_Panorama.SetStatus("Вход выполнен", Color(120, 255, 120))
+            end
+        elseif lastAction == "register" then
+            GU_Panorama.SetStatus("Регистрация сохранена. Войдите, используя свой логин и пароль.", Color(200, 220, 255))
+        else
+            GU_Panorama.SetStatus("Синхронизация данных завершена", Color(180, 220, 180))
+        end
     end
 
     GU_Panorama.AutoLogin = GU_Panorama.Account.remember and GU_Panorama.Account.login ~= ""
