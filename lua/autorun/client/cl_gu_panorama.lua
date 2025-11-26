@@ -10,6 +10,9 @@ GU_Panorama.Account = {
     remember = false
 }
 
+local showCharacters
+local showAuth
+
 surface.CreateFont("GU_Panorama_Title", {
     font = "Roboto",
     size = 42,
@@ -56,6 +59,25 @@ local function makeBackground()
     frame.logo = Material(CONFIG.LogoMaterial)
     frame.background = Material(CONFIG.BackgroundMaterial)
 
+    local function continueFlow()
+        if not GU_Panorama.InputReady then return end
+        if GU_Panorama.State ~= "panorama" then return end
+
+        hook.Remove("PlayerButtonDown", "GU_Panorama_AnyKey")
+
+        GU_Panorama.State = "auth"
+
+        if GU_Panorama.AutoLogin then
+            showCharacters()
+        else
+            showAuth()
+        end
+
+        if IsValid(GU_Panorama.Panorama) then
+            GU_Panorama.Panorama:Remove()
+        end
+    end
+
     frame.Think = function(self)
         if not IsValid(self) then return end
         self:MakePopup()
@@ -63,20 +85,23 @@ local function makeBackground()
     end
 
     frame.Paint = function(self, w, h)
-        surface.SetDrawColor(255, 255, 255, 255)
-        surface.SetMaterial(self.background)
-        surface.DrawTexturedRect(0, 0, w, h)
+        surface.SetDrawColor(0, 0, 0, 255)
+        surface.DrawRect(0, 0, w, h)
 
-        blurBackground(self)
+        -- surface.SetMaterial(self.background)
+        -- surface.DrawTexturedRect(0, 0, w, h)
 
-        local logoW, logoH = 900, 400
-        surface.SetMaterial(self.logo)
-        surface.DrawTexturedRect((w - logoW) / 2, (h - logoH) / 2, logoW, logoH)
+        -- local logoW, logoH = 900, 400
+        -- surface.SetMaterial(self.logo)
+        -- surface.DrawTexturedRect((w - logoW) / 2, (h - logoH) / 2, logoW, logoH)
 
         local pulse = 127 + math.sin(CurTime() * 3) * 128
         draw.SimpleText("Нажмите любую кнопку чтобы продолжить", "GU_Panorama_Subtle", w - 40, h - 40, Color(255, 255, 255, pulse), TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
         draw.SimpleText("🖱", "GU_Panorama_Title", w - 48, h - 80, Color(255, 255, 255, pulse), TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
     end
+
+    frame.OnMousePressed = continueFlow
+    frame.OnKeyCodePressed = continueFlow
 
     return frame
 end
@@ -146,7 +171,6 @@ local function buildLoginForm(parent)
     passwordEntry:SetEnterAllowed(false)
     passwordEntry:SetValue("")
     passwordEntry:SetText("")
-    passwordEntry:SetPasswordChar("*")
     form:AddItem(passwordEntry)
 
     local remember = vgui.Create("DCheckBoxLabel", form)
@@ -185,7 +209,6 @@ local function buildRegisterForm(parent)
 
     local passwordEntry = vgui.Create("DTextEntry", form)
     passwordEntry:SetPlaceholderText("Пароль")
-    passwordEntry:SetPasswordChar("*")
     form:AddItem(passwordEntry)
 
     local promoEntry = vgui.Create("DTextEntry", form)
