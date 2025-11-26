@@ -10,8 +10,9 @@ GU_Panorama.Account = {
     remember = false
 }
 
-local showCharacters
-local showAuth
+-- placeholders are defined up front so early input callbacks always have callable targets
+local showCharacters = function() end
+local showAuth = function() end
 
 surface.CreateFont("GU_Panorama_Title", {
     font = "Roboto",
@@ -469,12 +470,12 @@ local function closeAll()
     if IsValid(GU_Panorama.CharacterFrame) then GU_Panorama.CharacterFrame:Remove() end
 end
 
-local function showCharacters()
+showCharacters = function()
     if IsValid(GU_Panorama.AuthFrame) then GU_Panorama.AuthFrame:Close() end
     GU_Panorama.CharacterFrame = buildCharacterSlots()
 end
 
-local function showAuth()
+showAuth = function()
     if IsValid(GU_Panorama.CharacterFrame) then GU_Panorama.CharacterFrame:Close() end
     GU_Panorama.AuthFrame = buildAuth()
 end
