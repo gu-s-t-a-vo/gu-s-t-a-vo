@@ -262,13 +262,20 @@ local function buildCharacterCreator(slot)
     metaPanel:Dock(FILL)
     metaPanel:DockMargin(16, 8, 8, 8)
 
+    local function stackControl(ctrl, margin)
+        ctrl:Dock(TOP)
+        ctrl:DockMargin(0, margin or 6, 0, 0)
+        ctrl:SetTall(32)
+        return ctrl
+    end
+
     local first = vgui.Create("DTextEntry", metaPanel)
     first:SetPlaceholderText("Имя")
-    metaPanel:AddItem(first)
+    stackControl(first, 0)
 
     local last = vgui.Create("DTextEntry", metaPanel)
     last:SetPlaceholderText("Фамилия")
-    metaPanel:AddItem(last)
+    stackControl(last)
 
     local age = vgui.Create("DNumSlider", metaPanel)
     age:SetText("Возраст")
@@ -276,17 +283,23 @@ local function buildCharacterCreator(slot)
     age:SetMax(90)
     age:SetValue(24)
     age:SetDecimals(0)
-    metaPanel:AddItem(age)
+    stackControl(age)
 
     local modelEntry = vgui.Create("DTextEntry", metaPanel)
     modelEntry:SetPlaceholderText("Модель игрока")
     modelEntry:SetText(CONFIG.DefaultModel)
-    metaPanel:AddItem(modelEntry)
+    stackControl(modelEntry)
+
+    local applyModel = vgui.Create("DButton", metaPanel)
+    applyModel:SetText("Применить модель")
+    stackControl(applyModel)
 
     local bodygroupList = vgui.Create("DPanelList", metaPanel)
     bodygroupList:SetSpacing(6)
     bodygroupList:EnableVerticalScrollbar(true)
-    metaPanel:AddItem(bodygroupList)
+    bodygroupList:SetTall(180)
+    bodygroupList:Dock(TOP)
+    bodygroupList:DockMargin(0, 6, 0, 0)
 
     local function refreshBodygroups()
         bodygroupList:Clear()
@@ -308,20 +321,20 @@ local function buildCharacterCreator(slot)
         end
     end
 
-    modelEntry.OnEnter = function(self)
-        modelPanel:SetModel(self:GetText())
+    local function applyModelChoice()
+        modelPanel:SetModel(modelEntry:GetText())
         timer.Simple(0, refreshBodygroups)
     end
 
-    modelPanel.PostDrawModel = function(self, ent)
-        self:SetModel(modelEntry:GetText())
-    end
+    applyModel.DoClick = applyModelChoice
+    modelEntry.OnEnter = applyModelChoice
+    modelEntry.OnLoseFocus = applyModelChoice
 
     refreshBodygroups()
 
     local save = vgui.Create("DButton", metaPanel)
     save:SetText("Сохранить персонажа")
-    metaPanel:AddItem(save)
+    stackControl(save, 12)
 
     save.DoClick = function()
         if not IsValid(modelPanel.Entity) then return end
@@ -339,6 +352,9 @@ local function buildCharacterCreator(slot)
             bodygroups = bgTable
         })
 
+        GU_Panorama.LastAction = "savechar"
+        sendSyncRequest()
+
         frame:Close()
     end
 
@@ -353,9 +369,13 @@ local function buildCharacterCard(parent, char, slot)
 
     panel.Paint = function(self, w, h)
         draw.RoundedBox(8, 0, 0, w, h, Color(25, 25, 25, 200))
-        draw.SimpleText(char.first_name .. " " .. char.last_name, "GU_Panorama_Title", 16, 16, color_white, TEXT_ALIGN_LEFT)
-        draw.SimpleText("Возраст: " .. char.age, "GU_Panorama_Subtle", 16, 60, color_white, TEXT_ALIGN_LEFT)
-        draw.SimpleText("Последний визит: " .. os.date("%d.%m.%Y %H:%M", char.last_played or os.time()), "GU_Panorama_Small", 16, 90, Color(200, 200, 200), TEXT_ALIGN_LEFT)
+        local first = char.first_name or char.first or "Без имени"
+        local last = char.last_name or char.last or ""
+        local fullName = string.Trim(first .. " " .. last)
+        draw.SimpleText(fullName ~= "" and fullName or "Безымянный герой", "GU_Panorama_Title", 16, 16, color_white, TEXT_ALIGN_LEFT)
+        draw.SimpleText("Возраст: " .. tostring(char.age or 0), "GU_Panorama_Subtle", 16, 60, color_white, TEXT_ALIGN_LEFT)
+        local lastPlayed = tonumber(char.last_played) or os.time()
+        draw.SimpleText("Последний визит: " .. os.date("%d.%m.%Y %H:%M", lastPlayed), "GU_Panorama_Small", 16, 90, Color(200, 200, 200), TEXT_ALIGN_LEFT)
         draw.SimpleText("Деньги: " .. tostring(char.money or 0), "GU_Panorama_Small", 16, 110, Color(200, 200, 200), TEXT_ALIGN_LEFT)
     end
 
@@ -503,12 +523,14 @@ end
 showCharacters = function()
     if IsValid(GU_Panorama.AuthFrame) then GU_Panorama.AuthFrame:Close() end
     GU_Panorama.SetStatus = nil
+    GU_Panorama.State = "characters"
     GU_Panorama.CharacterFrame = buildCharacterSlots()
     logDebug("Открыто меню выбора персонажа")
 end
 
 showAuth = function()
     if IsValid(GU_Panorama.CharacterFrame) then GU_Panorama.CharacterFrame:Close() end
+    GU_Panorama.State = "auth"
     GU_Panorama.AuthFrame = buildAuth()
     logDebug("Открыто окно авторизации/регистрации")
 end
@@ -595,6 +617,11 @@ net.Receive("gu_panorama_sync", function()
     end
 
     GU_Panorama.AutoLogin = GU_Panorama.Account.remember and GU_Panorama.Account.login ~= ""
+
+    if GU_Panorama.State == "characters" then
+        if IsValid(GU_Panorama.CharacterFrame) then GU_Panorama.CharacterFrame:Close() end
+        GU_Panorama.CharacterFrame = buildCharacterSlots()
+    end
 
     if not GU_Panorama.Initialized then
         GU_Panorama.Initialized = true
